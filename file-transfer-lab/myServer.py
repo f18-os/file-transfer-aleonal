@@ -1,8 +1,7 @@
 #! /usr/bin/env python3
-
+import sys
 sys.path.append("../lib")       # for params
-
-import sys, os, socket, params
+import os, socket, params, re
 
 
 switchesVarDefaults = (
@@ -28,15 +27,38 @@ print("listening on:", bindAddr)
 while True:
     sock, addr = lsock.accept()
 
-    from framedSock import framedSend, framedReceive
+    from mySock import framedSend, framedReceive
 
     if not os.fork():
         print("new child process handling connection from", addr)
+
         while True:
             payload = framedReceive(sock, debug)
-            if debug: print("rec'd: ", payload)
-            if not payload:
-                if debug: print("child exiting")
+
+            if "sdsf" in payload.decode():
+                print("Client in port %s exiting..." % addr[1])
                 sys.exit(0)
-            payload += b"!"             # make emphatic!
-            framedSend(sock, payload, debug)
+
+            data = re.split(" ", payload.decode())
+
+            if "put" in data[0]:
+                f = open(data[1], "wb")
+                f.write(data[2])
+                f.close()
+
+                print("File received.")
+            elif "get" in data[0]:
+
+                print("File request received.")
+
+                try:
+                    f = open(data[1], "rb")
+                except FileNotFoundError:
+                    print("File not found.")
+                    continue
+
+                framedSend(sock, f.read(), -1)
+                f.close()
+                print("File sent.")
+
+            if debug: print("rec'd: ", payload)
