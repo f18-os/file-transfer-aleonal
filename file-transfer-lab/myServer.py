@@ -35,6 +35,10 @@ while True:
         while True:
             payload = framedReceive(sock, debug)
 
+            if not payload:
+                print("Client in port %s abruptly disconnected. Ending child process." % addr[1])
+                sys.exit(0)
+
             if "sdsf" in payload.decode():
                 print("Client in port %s exiting..." % addr[1])
                 sys.exit(0)
@@ -42,19 +46,29 @@ while True:
             data = re.split(" ", payload.decode())
 
             if "put" in data[0]:
-                f = open(data[1], "wb")
-                f.write(data[2])
-                f.close()
+                if not open(data[1], "rb"):
+                    f = open(data[1], "wb")
+                    f.write(data[2])
+                    f.close()
+                    print("File received.")
+                else:
+                    print("File already exists in server!")
+                    framedSend(sock, b"sdsf", 1)
 
-                print("File received.")
             elif "get" in data[0]:
-
                 print("File request received.")
 
                 try:
                     f = open(data[1], "rb")
                 except FileNotFoundError:
                     print("File not found.")
+                    framedSend(sock, b"sdsf", 1)
+                    continue
+
+                if os.stat(data[1]).st_size == 0:
+                    framedSend(sock, b"empty", -1)
+                    f.close()
+                    print("Error, file is empty.")
                     continue
 
                 framedSend(sock, f.read(), -1)

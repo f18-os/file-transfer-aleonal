@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-import socket, sys, re
+import socket, sys, re, time
 sys.path.append("../lib")       # for params
 import params
 from mySock import framedSend, framedReceive
@@ -51,11 +51,6 @@ def connectSocket():
             continue
         break
 
-
-    if s is None:
-        print('could not open socket')
-        sys.exit(1)
-
 def fileTransfer(prompt):
     global s
     if "exit" in prompt:
@@ -64,9 +59,14 @@ def fileTransfer(prompt):
         s.close()
         sys.exit(0)
 
-    command, file = re.split(" ", prompt)
-    f = None
+    if " " in prompt:
+        command, file = re.split(" ", prompt)
+    else:
+        print("Unknown command.")
+        return
 
+
+    f = None
     if "put" in command:
         try:
             f = open(file, "rb")
@@ -78,13 +78,44 @@ def fileTransfer(prompt):
         f.close()
         framedSend(s, data, -1)
 
+        if "sdsf" in data.decode():
+            print("File already exists on server, file was rejected!");
+            return
+
         print("File sent.")
     elif "get" in command:
+        isFound = 0
         data = command.encode() + b" " + file.encode()
+
+        try:
+            open(file, "rb")
+        except FileNotFoundError:
+            isFound = 1
+
+        if isFound == 0:
+            print("File already exists in directory. Retrieving file from server will overwrite file.")
+            print("Are you sure you want to continue? (yes/no)")
+            if "yes" in input():
+                pass
+            elif "no" in input():
+                print("File retrieval aborted.")
+                return
+            else:
+                print("Wrong command, file retrieval aborted.")
+                return
+
         framedSend(s, data, -1)
         print("File request sent.")
-
         data = framedReceive(s, -1)
+        if checkServerStatus(data) == -2: return -2
+
+        if "sdsf" in data.decode():
+            print("Error, file not found in server.");
+            return
+        elif "empty" in data.decode():
+            print("Error, file in server was empty. File not retrieved.")
+            return
+
         f = open(file, "wb")
         f.write(data)
         f.close()
@@ -92,11 +123,25 @@ def fileTransfer(prompt):
     else:
         print("Unknown command.")
 
+def checkServerStatus(data):
+    if not data:
+        print("Server abruptly disconnected!")
+        return -2
+
 if __name__ == '__main__':
     global s
-    connectSocket()
+    s = None
     while True:
-        prompt = input("Enter command and filename, or 'exit' to disconnect: ")
-        fileTransfer(prompt)
+        while not s:
+            print("Wait...")
+            time.sleep(3)
+            connectSocket()
 
-    s.close()
+        while True:
+            prompt = input("Enter command and filename, or 'exit' to disconnect: ")
+            result = fileTransfer(prompt)
+            if result == -2: break
+            print()
+
+        s.close()
+        s = None
